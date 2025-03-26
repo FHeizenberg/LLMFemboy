@@ -7,8 +7,8 @@ import os
 
 
 class VectorChatHistory:
-    def __init__(self, embedding_model_name='sentence-transformers/LaBSE', index_file='chat_index.faiss',
-                 meta_file='chat_meta.json', max_messages=100):
+    def __init__(self, embedding_model_name='sentence-transformers/all-MPNet-base-v2', index_file='chat_index.faiss',
+                 meta_file='chat_meta.json', max_messages=150):
         # Инициализация модели для эмбеддингов
         self.embedding_model = SentenceTransformer(embedding_model_name)
 
