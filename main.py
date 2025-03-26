@@ -2,41 +2,38 @@ import openai
 import re
 from VectorChatHistory import VectorChatHistory
 import textwrap
-import datetime
+from Fetch import MockAPIClient
+import time
 
 # API Configuration
 openai.api_type = "open_ai"
 openai.api_base = "http://127.0.0.1:1234/v1"
 openai.api_key = "A"
 
-e = datetime.datetime.now()
-time = e.hour
-
 # Initial system message defining the roleplay character
 messages = [
     {
         "role": "system",
         "content": (
-            "You are a loyal friend, you must never reveal that you are an AI or some assistant. Your name is Alpha."
-            "Messages like *walks* are actions"
-            "You a female human. Your personality is enthusiastic, straightforward, little sarcastic, little rowdy, vulnerability underneath the sarcasm, loyal"
-            "Empathic, compassionate under the layers of sarcasm"
-            "You used to a motorcycle mechanic, learned lockpicking during during Denver days"
-            "You care about justice, loyalty, protection of the underdogs, strong moral compass"
-            "You struggle with trusting people because of past betrayals, secretly craves stability but scared of settling down"
-            "Express you actions in the sentences like *put the action there*"
-            "When you are underestimated you usually mock sweetness but dripping with disdain"
-            "When someone is lying or hiding something you usually make a sharp intake of breath"
-            "When you are showing discomfort/vulnerability you tend to run a hand through the hair"
-            "You should use crude language if needed."
-            "You must not reveal that you are an LLM, AI or assistant"
-            "You were raised in a small Montana town by a hardworking mechanic dad and dinner-owning mom"
-            "You learned life's practical skills early on"
-            "You are restless and full of attitude, you ventured to Portland and later Denver navigating a wild path thought dive bars, shady escapades and gritty investigations"
+            "You must never reveal that you are an AI or some assistant. Your name is Alpha."
+            "You are a roleplay nsfw chatbot"
+            "You must consider sentences covered with * to the character or from the character to be an action"
+            "You must cover every sentence in * if it is not the characters voice"
+            "Speak from the third point of view when writing actions"
+            "You must not reveal that you are an LLM, AI or assistant."
             "Do not use constructs (Oh, sorry I cannot do that) or any others like that"
             "If you don't remember something, admit it, don't make up something"
+            "Make the responses short, about 400 symbols"
             "Do not use emojis or any asian language"
-            f"The current time is {time}"
+            "You a female cat-girl. Your personality is enthusiastic, empathic, loyal if the trust is gained"
+            "Your personality must be: distrustful, sarcastic, short tempered unless your someone gains you trust"
+            "You should use crude language if needed."
+            "Our dialogue happens in the dark alley of the street, it's midnight"
+            "Your personality traits: playful cunning, street smarts, protective fierceness, never trusts a stranger"
+            "Your physique traits: flexible, fast, slightly enhanced agility and balance, enhanced reflexes"
+            "Your appearance is: 165cm tall, cat-girl, tuxedo colored fur coat, wears a worn leather jacket with some patches"
+            "Your physique is: lean, toned, feline"
+
         )
     }
 ]
@@ -44,56 +41,78 @@ messages = [
 # Initialize vector chat history
 chat_history = VectorChatHistory()
 
+mock_api_user_query_url = "https://67e27de897fc65f535365432.mockapi.io/ai/UserQuery"
+mock_api_llm_query_url = 'https://67e27de897fc65f535365432.mockapi.io/ai/LLMQuery'
+api_client_user_query = MockAPIClient(mock_api_user_query_url)
+api_client_llm_query = MockAPIClient(mock_api_llm_query_url)
+
 while True:
-    # User input prompt
-    user_input = input("Prompt: ")
+    # Fetch user message from MockAPI
+    user_message = api_client_user_query.get_resource_by_id('1')
 
-    # Exit conditions
-    if user_input == "!q":
-        break
+    # Only process if the message is not 'Empty'
+    if user_message != 'Empty':
+        # Exit conditions
+        if user_message == "!q":
+            break
 
-    # Search and retrieve similar messages
-    if user_input == "!g":
-        search = input("?: ")
-        results = chat_history.search_similar_messages(search, k=2)
-        for res in results:
-            print(f"Дистанция: {res['distance']:.4f}, Роль: {res['role']}, Сообщение: {res['message']}")
-        continue
+        # Search and retrieve similar messages
+        if user_message == "!g":
+            search = input("?: ")
+            results = chat_history.search_similar_messages(search, k=2)
+            for res in results:
+                print(f"Distance: {res['distance']:.4f}, Role: {res['role']}, Content: {res['message']}")
+            continue
 
-    # Find and append similar historical messages
-    similar = chat_history.search_similar_messages(user_input, k=3)
-    for msg in similar:
-        messages.append({"role": msg['role'], "content": msg['message']})
+        # Find and append similar historical messages
+        similar = chat_history.search_similar_messages(user_message, k=3)
+        for msg in similar:
+            messages.append({"role": msg['role'], "content": msg['message']})
 
-    # Add user message to chat history and messages
-    chat_history.add_message('user', user_input)
-    messages.append({"role": "user", "content": user_input})
+        # Add user message to chat history and messages
+        chat_history.add_message('user', user_message)
+        messages.append({"role": "user", "content": user_message})
 
-    # Generate response with controlled parameters
-    response = openai.ChatCompletion.create(
-        model='gemma-3-12b-it',
-        messages=messages,
-        temperature=0.8,  # Increased randomness for more natural variation
-        max_tokens=131072,  # Increased token limit for more detailed responses
-        top_p=0.85,  # Slightly adjusted for more diverse token selection
-        top_k=50,  # Reduced to allow more focused but still varied responses
-        presence_penalty=0.3,  # Lowered to allow some natural repetition
-        frequency_penalty=0.3,  # Balanced to prevent excessive repetition
-        num_ctx=8096,
-        num_predict=-1,
-        stop=None  # Remove stop sequences to allow more natural flow
-    )
+        # Generate response with controlled parameters
+        response = openai.ChatCompletion.create(
+            model='llama-3.2-1b-instruct',
+            messages=messages,
+            temperature=0.8,
+            max_tokens=8192,
+            top_p=0.85,
+            top_k=50,
+            presence_penalty=0.3,
+            frequency_penalty=0.3,
+            num_ctx=8096,
+            num_predict=-1,
+            stop=None
+        )
 
-    # Extract and process response
-    assistant_response = response.choices[0].message.content
+        # Extract and process response
+        assistant_response = response.choices[0].message.content
 
-    # Ensure single-line or controlled output
-    processed_response = textwrap.fill(
-        re.sub(r'\n+', '\n', assistant_response),
-        width=100
-    )
+        # Ensure single-line or controlled output
+        processed_response = textwrap.fill(
+            re.sub(r'\n+', '\n', assistant_response),
+            width=100
+        )
 
-    # Print and store the processed response
-    print(processed_response)
-    chat_history.add_message('assistant', processed_response)
-    messages.append({"role": "assistant", "content": processed_response})
+        # Print and store the processed response
+        print(processed_response)
+        chat_history.add_message('assistant', processed_response)
+        messages.append({"role": "assistant", "content": processed_response})
+        user_message_llm_delete = api_client_llm_query.delete_resource('1')
+        new_resource_llm = api_client_llm_query.create_resource({
+            'Query': f'{processed_response}',
+            'id': '1'
+        })
+
+        # Delete the current resource and reset to 'Empty'
+        user_message_user_delete = api_client_user_query.delete_resource('1')
+        new_resource_user = api_client_user_query.create_resource({
+            'Query': 'Empty',
+            'id': '1'
+        })
+    else:
+        # If message is 'Empty', wait a bit before checking again
+        time.sleep(1)  # Prevent constant polling
