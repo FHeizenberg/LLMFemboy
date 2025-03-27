@@ -7,25 +7,25 @@ import os
 
 
 class VectorChatHistory:
-    def __init__(self, embedding_model_name='sentence-transformers/all-MPNet-base-v2', index_file='chat_index.faiss',
-                 meta_file='chat_meta.json', max_messages=150):
-        # Инициализация модели для эмбеддингов
+    def __init__(self, embedding_model_name='sentence-transformers/all-MPNet-base-v2',
+                 index_file='chat_index.faiss', meta_file='chat_meta.json',
+                 max_messages=150, nlist=150):
+        # Initialize the embedding model
         self.embedding_model = SentenceTransformer(embedding_model_name)
-
-        # Размерность эмбеддингов (зависит от модели)
         self.embedding_dim = self.embedding_model.get_sentence_embedding_dimension()
 
-        # Инициализация FAISS индекса
-        self.index = faiss.IndexFlatL2(self.embedding_dim)
+        # Use an IVF index for better performance on large datasets.
+        self.nlist = nlist
+        quantizer = faiss.IndexFlatL2(self.embedding_dim)
+        self.index = faiss.IndexIVFFlat(quantizer, self.embedding_dim, self.nlist, faiss.METRIC_L2)
 
-        # Хранение метаданных
         self.metadata = []
         self.index_file = index_file
         self.meta_file = meta_file
-
-        # Загрузка сохраненных данных, если они существуют
-        self._load_from_disk()
         self.max_messages = max_messages
+
+        # Load any saved index and metadata if available
+        self._load_from_disk()
 
     def _load_from_disk(self):
         if os.path.exists(self.index_file) and os.path.exists(self.meta_file):
@@ -39,75 +39,66 @@ class VectorChatHistory:
             json.dump(self.metadata, f)
 
     def add_message(self, role, message):
+        # Compute the embedding once and cache it in metadata
+        embedding = self.embedding_model.encode(message)
+        embedding = np.array(embedding, dtype='float32')
 
+        # Remove oldest messages periodically when max_messages is reached.
         if (len(self.metadata) >= self.max_messages) and (len(self.metadata) % 15 == 0):
             self._remove_oldest_messages(percent=20)
-        # Генерация эмбеддинга
-        embedding = self.embedding_model.encode(message)
-        embedding = np.array([embedding]).astype('float32')
 
-        # Добавление в индекс FAISS
-        self.index.add(embedding)
-
-        # Сохранение метаданных
+        # Append metadata with cached embedding (convert to list for JSON serialization)
         self.metadata.append({
             'role': role,
             'message': message,
-            'timestamp': str(datetime.now())
+            'timestamp': str(datetime.now()),
+            'embedding': embedding.tolist()
         })
 
-        # Сохранение на диск
+        # If the index is not trained and enough data is available, train it.
+        if not self.index.is_trained:
+            if len(self.metadata) >= self.nlist:
+                embeddings = np.array([np.array(msg['embedding'], dtype='float32') for msg in self.metadata])
+                self.index.train(embeddings)
+                self.index.add(embeddings)
+        else:
+            # Add the new embedding to the already trained index.
+            self.index.add(np.array([embedding]))
+
         self._save_to_disk()
 
-    def search_similar_messages(self, query, k=3):
-        # Генерация эмбеддинга для запроса
+    def search_similar_messages(self, query, k=2):
+        # Generate an embedding for the query.
         query_embedding = self.embedding_model.encode(query)
-        query_embedding = np.array([query_embedding]).astype('float32')
+        query_embedding = np.array([query_embedding], dtype='float32')
 
-        # Поиск k ближайших соседей
+        # Perform k-nearest neighbor search.
         distances, indices = self.index.search(query_embedding, k)
-
-        # Возврат результатов с метаданными
         results = []
         for idx, dist in zip(indices[0], distances[0]):
-            if idx >= 0 and idx < len(self.metadata):  # Проверка на валидность индекса
+            if 0 <= idx < len(self.metadata):
                 result = self.metadata[idx].copy()
                 result['distance'] = float(dist)
                 results.append(result)
-
         return results
 
     def clear_history(self):
-        # Очистка истории
-        self.index = faiss.IndexFlatL2(self.embedding_dim)
+        quantizer = faiss.IndexFlatL2(self.embedding_dim)
+        self.index = faiss.IndexIVFFlat(quantizer, self.embedding_dim, self.nlist, faiss.METRIC_L2)
         self.metadata = []
         self._save_to_disk()
 
     def _remove_oldest_messages(self, percent=20):
-        """Удаляет самые старые сообщения"""
-        num_to_remove = int(len(self.metadata) * percent / 100)
-        if num_to_remove < 1:
-            num_to_remove = 1
-
-        # Удаляем из метаданных
+        num_to_remove = max(1, int(len(self.metadata) * percent / 100))
         self.metadata = self.metadata[num_to_remove:]
-
-        # Перестраиваем индекс FAISS
         self._rebuild_index()
-
-        # Сохраняем изменения
         self._save_to_disk()
 
     def _rebuild_index(self):
-        """Полностью перестраивает индекс FAISS из текущих метаданных"""
-        self.index = faiss.IndexFlatL2(self.embedding_dim)
+        quantizer = faiss.IndexFlatL2(self.embedding_dim)
+        self.index = faiss.IndexIVFFlat(quantizer, self.embedding_dim, self.nlist, faiss.METRIC_L2)
         if self.metadata:
-            # Собираем все эмбеддинги
-            embeddings = []
-            for msg in self.metadata:
-                embedding = self.embedding_model.encode(msg['message'])
-                embeddings.append(embedding)
-
-            # Добавляем в индекс
-            embeddings = np.array(embeddings).astype('float32')
+            embeddings = np.array([np.array(msg['embedding'], dtype='float32') for msg in self.metadata])
+            if len(self.metadata) >= self.nlist:
+                self.index.train(embeddings)
             self.index.add(embeddings)

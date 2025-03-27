@@ -116,7 +116,7 @@ class MockAPIClient:
 
 # Example usage
 def main():
-    # Replace with your actual MockAPI endpoint
+    # MockAPI endpoints
     mock_api_user_query_url = 'https://67e27de897fc65f535365432.mockapi.io/ai/UserQuery'
     mock_api_llm_query_url = 'https://67e27de897fc65f535365432.mockapi.io/ai/LLMQuery'
 
