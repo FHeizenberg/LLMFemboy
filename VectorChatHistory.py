@@ -5,7 +5,8 @@ from datetime import datetime
 import json
 import os
 
-
+#To-do: Optimize via GPU
+#Vanya gay
 class VectorChatHistory:
     def __init__(self, embedding_model_name='sentence-transformers/all-MPNet-base-v2',
                  index_file='chat_index.faiss', meta_file='chat_meta.json',
@@ -43,7 +44,7 @@ class VectorChatHistory:
         embedding = self.embedding_model.encode(message)
         embedding = np.array(embedding, dtype='float32')
 
-        # Remove oldest messages periodically when max_messages is reached.
+        # Removes oldest messages periodically when max_messages is reached.
         if (len(self.metadata) >= self.max_messages) and (len(self.metadata) % 15 == 0):
             self._remove_oldest_messages(percent=20)
 

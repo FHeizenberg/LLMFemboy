@@ -127,11 +127,11 @@ def main():
     #all_resources = client.get_all_resources()
     #print(all_resources)
 
-     #Get a specific resource
+    # Get a specific resource
     specific_resource = client_user_query.get_resource_by_id('1')
     print("Specific Resource:", specific_resource)
 
-     #Delete a resource
+    # Delete a resource
     deletion_result = client_user_query.delete_resource('1')
     print("Deletion Successful:", deletion_result)
 
